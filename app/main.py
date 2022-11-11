@@ -16,7 +16,7 @@ class Post(BaseModel):
 
 while True:
     try:
-        conn=psycopg2.connect(host="localhost",database="blogApiFastApi",user="postgres",password="notMyPassword^-^",cursor_factory=RealDictCursor)
+        conn=psycopg2.connect(host="localhost",database="blogApiFastApi",user="postgres",password="basseT_2000",cursor_factory=RealDictCursor)
         cursor=conn.cursor()
         print("database connection was successfull ✅")
         break
@@ -43,36 +43,50 @@ async def root():
 
 @app.get("/posts")
 async def get_posts():
-    return {"data": my_posts}
+
+    cursor.execute("""SELECT * FROM posts""")
+    posts=cursor.fetchall()
+
+    return {"data": posts}
 
 @app.post("/posts",status_code=status.HTTP_201_CREATED)
 async def create_posts(post:Post):
-    post_dict=post.dict()
-    post_dict['id']=randrange(0,100000)
-    my_posts.append(post_dict)
-    return {"data": my_posts}
+
+    cursor.execute("""INSERT INTO posts (title,content,published) VALUES (%s,%s,%s) RETURNING *""",
+                    (post.title,post.content,post.published))
+    post=cursor.fetchone()
+    conn.commit()
+
+    return {"data": post}
     
 @app.get("/posts/{id}")
 async def get_post(id:int):
-    post=find_post(id)
+
+    cursor.execute("""SELECT * FROM posts WHERE id = %s """,(str(id),))
+    post=cursor.fetchone()
+
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post {id} was not found")
     return {"post":post}
 
 @app.delete("/posts/{id}")
 async def delete_post(id:int):
-    index=find_index_post(id)
-    if not index:
+
+    cursor.execute("""DELETE FROM posts WHERE id = %s RETURNING *""",(str(id),))
+    deleted_post=cursor.fetchone()
+    conn.commit()
+
+    if deleted_post == None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post {id} was not found")
-    my_posts.pop(index)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @app.put("/posts/{id}")
 async def update_post(id:int,post:Post):
-    index=find_index_post(id)
-    if not index:
+
+    cursor.execute("""UPDATE posts SET TITLE=%s, CONTENT=%s, PUBLISHED=%s WHERE ID=%s  RETURNING *""",(post.title,post.content,post.published,str(id)))
+    updated_post=cursor.fetchone()
+    conn.commit()
+
+    if updated_post== None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post {id} was not found")
-    post_dict=post.dict()
-    post_dict['id']=id
-    my_posts[index]=post_dict
-    return {"message":"updated post"}
+    return {"message":updated_post}
