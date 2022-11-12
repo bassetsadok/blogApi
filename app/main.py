@@ -1,18 +1,24 @@
 import psycopg2
 from typing import Optional
-from fastapi import  FastAPI, Response, status,HTTPException
+from fastapi import  FastAPI, Response, status,HTTPException,Depends
 from fastapi.params import Body
 from pydantic import BaseModel
 from random import randrange
 from psycopg2.extras import RealDictCursor
 import time
+from . import models
+from .database import  engine,get_db
+from sqlalchemy.orm import Session
+
+models.Base.metadata.create_all(bind=engine)
+
+
 app = FastAPI()
 
 class Post(BaseModel):
     title:str
     content:str
     published:bool=True
-    rating:Optional[int]=None
 
 while True:
     try:
@@ -41,23 +47,27 @@ def find_index_post(id):
 async def root():
     return {"message": "Hello World"}
 
+@app.get("/sqlalchemy")
+async def test_myposts(db: Session = Depends(get_db)):
+
+    posts=db.query(models.Post).all()
+    return {"data":posts}
+
 @app.get("/posts")
-async def get_posts():
+async def get_posts(db: Session = Depends(get_db)):
 
-    cursor.execute("""SELECT * FROM posts""")
-    posts=cursor.fetchall()
-
+    posts=db.query(models.Post).all()
     return {"data": posts}
 
 @app.post("/posts",status_code=status.HTTP_201_CREATED)
-async def create_posts(post:Post):
+async def create_posts(post:Post,db: Session = Depends(get_db)):
 
-    cursor.execute("""INSERT INTO posts (title,content,published) VALUES (%s,%s,%s) RETURNING *""",
-                    (post.title,post.content,post.published))
-    post=cursor.fetchone()
-    conn.commit()
+    new_post=models.Post(**post.dict())
+    db.add(new_post)
+    db.commit()
+    db.refresh(new_post)
 
-    return {"data": post}
+    return {"data": new_post}
     
 @app.get("/posts/{id}")
 async def get_post(id:int):
